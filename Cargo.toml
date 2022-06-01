@@ -1,0 +1,18 @@
+[package]
+name = "challenge"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tonic = "0.7"
+crypto-ws-client = "4.11.3"
+crypto-msg-parser = "*"
+crypto-market-type = "*"
+crypto-pair = "*"
+tokio = { version = "1.0", features = [ "rt-multi-thread", "time", "fs", "macros", "net",] }
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+anyhow = "*"
