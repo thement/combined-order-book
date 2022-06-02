@@ -128,8 +128,8 @@ struct SpreadScraper {
     summary_order_book_sender: watch::Sender<Option<Arc<OrderBookSummary>>>,
 }
 
-struct SpreadScraperWatcher {
-    summary_order_book_receiver: watch::Receiver<Option<Arc<OrderBookSummary>>>,
+pub struct SpreadScraperWatcher {
+    pub summary_order_book_receiver: watch::Receiver<Option<Arc<OrderBookSummary>>>,
 }
 
 impl SpreadScraper {
@@ -206,8 +206,7 @@ impl SpreadScraper {
     }
 }
 
-#[tokio::main]
-async fn main() {
+pub async fn run() -> SpreadScraperWatcher {
     // Hack to initialize OnceCell inside `crypto_pair`, otherwise it panics because it tries to
     // run blocking code in non-blocking (async) context
     tokio::task::spawn_blocking(|| crypto_pair::normalize_pair("BTCEUR", "binance"))
@@ -224,5 +223,7 @@ async fn main() {
         .connect_to_exchange("btceur", "bitstamp", |tx| BitstampWSClient::new(tx, None))
         .await;
 
-    spread_scraper.run().await;
+    tokio::task::spawn(async move { spread_scraper.run().await }).await.unwrap();
+
+    spread_scraper_watcher
 }
