@@ -244,3 +244,14 @@ pub async fn start() -> SpreadScraperWatcher {
 
     spread_scraper_watcher
 }
+
+pub fn install_abort_panic_handler() {
+    let default_hook = std::panic::take_hook();
+
+    let our_hook = move |panic_info: &std::panic::PanicInfo| {
+        default_hook(panic_info);
+        std::process::abort();
+    };
+
+    std::panic::set_hook(Box::new(our_hook));
+}

@@ -74,6 +74,7 @@ impl pb::orderbook_aggregator_server::OrderbookAggregator for OrderbookAggregato
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    combined_order_book::install_abort_panic_handler();
     eprintln!("connecting to exchanges");
     let watcher = combined_order_book::start().await;
     eprintln!("starting grpc server");
