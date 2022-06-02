@@ -2,7 +2,7 @@ use crypto_market_type::MarketType;
 use crypto_ws_client::{BinanceSpotWSClient, BitstampWSClient, WSClient};
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::mpsc as std_mpsc;
+use std::sync::{mpsc as std_mpsc, Arc};
 use tokio::sync::{mpsc, watch};
 
 #[derive(Clone, Debug)]
@@ -49,9 +49,11 @@ impl OrderBook {
 
     fn sort(&mut self) {
         // Lowest ask at the top
-        self.asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
+        self.asks
+            .sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
         // Highest bid at the top
-        self.bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
+        self.bids
+            .sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap());
     }
 
     fn spread(&self) -> f64 {
@@ -67,7 +69,7 @@ impl OrderBook {
             order_book: OrderBook {
                 asks: self.asks.iter().take(10).map(|x| x.clone()).collect(),
                 bids: self.bids.iter().take(10).map(|x| x.clone()).collect(),
-            }
+            },
         }
     }
 
@@ -123,16 +125,29 @@ struct SpreadScraper {
     tx_order_book: mpsc::UnboundedSender<ChanOrderBook>,
     rx_order_book: mpsc::UnboundedReceiver<ChanOrderBook>,
     order_book_map: HashMap<&'static str, Option<OrderBook>>,
+    summary_order_book_sender: watch::Sender<Option<Arc<OrderBookSummary>>>,
+}
+
+struct SpreadScraperWatcher {
+    summary_order_book_receiver: watch::Receiver<Option<Arc<OrderBookSummary>>>,
 }
 
 impl SpreadScraper {
-    fn new() -> Self {
+    fn new() -> (Self, SpreadScraperWatcher) {
         let (tx_order_book, rx_order_book) = mpsc::unbounded_channel();
-        Self {
-            tx_order_book,
-            rx_order_book,
-            order_book_map: HashMap::new(),
-        }
+        let (summary_order_book_sender, summary_order_book_receiver) = watch::channel(None);
+        let watcher = SpreadScraperWatcher {
+            summary_order_book_receiver,
+        };
+        (
+            Self {
+                tx_order_book,
+                rx_order_book,
+                order_book_map: HashMap::new(),
+                summary_order_book_sender,
+            },
+            watcher,
+        )
     }
 
     async fn connect_to_exchange<T, F, U>(
@@ -176,10 +191,11 @@ impl SpreadScraper {
                 }
             }
         }
-
         combined_order_book.sort();
 
         let summary = combined_order_book.make_summary();
+        self.summary_order_book_sender
+            .send_replace(Some(Arc::new(summary)));
     }
 
     async fn run(&mut self) {
@@ -198,7 +214,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let mut spread_scraper = SpreadScraper::new();
+    let (mut spread_scraper, spread_scraper_watcher) = SpreadScraper::new();
 
     spread_scraper
         .connect_to_exchange("BTCEUR", "binance", |tx| BinanceSpotWSClient::new(tx, None))
