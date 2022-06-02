@@ -1,3 +1,4 @@
+use combined_order_book;
 pub mod pb {
     tonic::include_proto!("orderbook");
 }
@@ -8,15 +9,27 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::{transport::Server, Request, Response, Status, Streaming};
 
-use pb::{Empty, Summary};
+use pb::{Empty, Level, Summary};
 
 type EmptyResult<T> = Result<Response<T>, Status>;
 type OrderbookStream = Pin<Box<dyn Stream<Item = Result<Summary, Status>> + Send>>;
 
 #[derive(Debug)]
 pub struct OrderbookAggregatorServer {
-    sequence_receiver: broadcast::Receiver<u32>,
-    sequence_sender: broadcast::Sender<u32>,
+    watcher: combined_order_book::SpreadScraperWatcher,
+}
+
+fn convert_orderbook_entries_to_proto(
+    entries: &[combined_order_book::OrderBookEntry],
+) -> Vec<Level> {
+    entries
+        .iter()
+        .map(|entry| Level {
+            price: entry.price,
+            amount: entry.amount,
+            exchange: entry.source.into(),
+        })
+        .collect()
 }
 
 #[tonic::async_trait]
@@ -24,38 +37,32 @@ impl pb::orderbook_aggregator_server::OrderbookAggregator for OrderbookAggregato
     type BookSummaryStream = OrderbookStream;
 
     async fn book_summary(&self, req: Request<Empty>) -> EmptyResult<Self::BookSummaryStream> {
-        println!("OrderbookAggregatorServer::server_streaming_echo");
-        println!("\tclient connected from: {:?}", req.remote_addr());
+        println!("client connected from: {:?}", req.remote_addr());
 
-        let mut sequence_receiver = self.sequence_sender.subscribe();
+        // Each watcher has to have it's own copy
+        let mut watcher = self.watcher.clone();
 
         // spawn and channel are required if you want handle "disconnect" functionality
         // the `out_stream` will not be polled after client disconnect
-        let (tx, rx) = mpsc::channel(128);
+        let (tx, rx) = mpsc::channel(8);
         tokio::spawn(async move {
-            loop {
-                match sequence_receiver.recv().await {
-                    Ok(sequence_number) => {
-                        let item = Summary {
-                            spread: sequence_number as f64,
-                            bids: vec![],
-                            asks: vec![],
-                        };
-                        match tx.send(Result::<_, Status>::Ok(item)).await {
-                            Ok(_) => {
-                                // item (server response) was queued to be send to client
-                            }
-                            Err(_item) => {
-                                // output_stream was build from rx and both are dropped
-                                break;
-                            }
-                        }
+            while let Ok(summary) = watcher.receive().await {
+                let item = Summary {
+                    spread: summary.spread,
+                    bids: convert_orderbook_entries_to_proto(&summary.order_book.bids),
+                    asks: convert_orderbook_entries_to_proto(&summary.order_book.asks),
+                };
+                match tx.send(Result::<_, Status>::Ok(item)).await {
+                    Ok(_) => {
+                        // item (server response) was queued to be send to client
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => (),
-                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(_item) => {
+                        // output_stream was build from rx and both are dropped
+                        break;
+                    }
                 }
             }
-            println!("\tclient disconnected");
+            println!("client disconnected");
         });
 
         let output_stream = ReceiverStream::new(rx);
@@ -67,23 +74,10 @@ impl pb::orderbook_aggregator_server::OrderbookAggregator for OrderbookAggregato
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (sequence_sender, sequence_receiver) = broadcast::channel(1);
-    let sequence_sender_inner = sequence_sender.clone();
-    tokio::spawn(async move {
-        let mut sequence_number = 0;
-        loop {
-            if sequence_sender_inner.send(sequence_number).is_err() {
-                // All clients dropped
-                break;
-            }
-            sequence_number += 1;
-            tokio::time::sleep(Duration::from_millis(800)).await;
-        }
-    });
-    let server = OrderbookAggregatorServer {
-        sequence_sender,
-        sequence_receiver,
-    };
+    eprintln!("connecting to exchanges");
+    let watcher = combined_order_book::start().await;
+    eprintln!("starting grpc server");
+    let server = OrderbookAggregatorServer { watcher };
     Server::builder()
         .add_service(pb::orderbook_aggregator_server::OrderbookAggregatorServer::new(server))
         .serve("[::1]:54321".to_socket_addrs().unwrap().next().unwrap())

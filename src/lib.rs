@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use crypto_market_type::MarketType;
 use crypto_ws_client::{BinanceSpotWSClient, BitstampWSClient, WSClient};
 use std::collections::HashMap;
@@ -103,7 +104,7 @@ fn parse_exchange_messages_thread(
     tx_order_book: mpsc::UnboundedSender<ChanOrderBook>,
 ) {
     for message in rx_message {
-        eprintln!("received = {}", message);
+        //eprintln!("received = {}", message);
         let update =
             crypto_msg_parser::parse_l2_topk(exchange_name, MarketType::Spot, &message, Some(0));
         match update {
@@ -128,8 +129,24 @@ struct SpreadScraper {
     summary_order_book_sender: watch::Sender<Option<Arc<OrderBookSummary>>>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SpreadScraperWatcher {
     pub summary_order_book_receiver: watch::Receiver<Option<Arc<OrderBookSummary>>>,
+}
+
+impl SpreadScraperWatcher {
+    pub async fn receive(&mut self) -> Result<Arc<OrderBookSummary>> {
+        loop {
+            match self.summary_order_book_receiver.changed().await {
+                Err(_) => bail!("order book summary stream ended"),
+                Ok(_) => match self.summary_order_book_receiver.borrow().clone() {
+                    // If orderbook is not present, then wait a bit for new one
+                    None => (),
+                    Some(value) => return Ok(value),
+                },
+            }
+        }
+    }
 }
 
 impl SpreadScraper {
@@ -162,7 +179,7 @@ impl SpreadScraper {
     {
         let (tx_message, rx_message) = std_mpsc::channel();
         let ws_client = ws_client_builder(tx_message).await;
-        eprintln!("connected to {}", exchange_name);
+        eprintln!("connected to {} asking for {}", exchange_name, pair_name);
 
         tokio::task::spawn(async move {
             let symbols = vec![pair_name.to_string()];
@@ -206,7 +223,7 @@ impl SpreadScraper {
     }
 }
 
-pub async fn run() -> SpreadScraperWatcher {
+pub async fn start() -> SpreadScraperWatcher {
     // Hack to initialize OnceCell inside `crypto_pair`, otherwise it panics because it tries to
     // run blocking code in non-blocking (async) context
     tokio::task::spawn_blocking(|| crypto_pair::normalize_pair("BTCEUR", "binance"))
@@ -223,7 +240,7 @@ pub async fn run() -> SpreadScraperWatcher {
         .connect_to_exchange("btceur", "bitstamp", |tx| BitstampWSClient::new(tx, None))
         .await;
 
-    tokio::task::spawn(async move { spread_scraper.run().await }).await.unwrap();
+    tokio::task::spawn(async move { spread_scraper.run().await });
 
     spread_scraper_watcher
 }
