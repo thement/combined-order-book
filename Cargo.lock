@@ -160,23 +160,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "challenge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crypto-market-type",
- "crypto-msg-parser",
- "crypto-pair",
- "crypto-ws-client",
- "serde",
- "serde_derive",
- "serde_json",
- "tokio",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -196,6 +179,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8ad8cef104ac57b68b89df3208164d228503abbdce70f6880ffa3d970e7443a"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "combined-order-book"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crypto-market-type",
+ "crypto-msg-parser",
+ "crypto-pair",
+ "crypto-ws-client",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-build",
 ]
 
 [[package]]
