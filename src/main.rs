@@ -3,13 +3,13 @@ use crypto_ws_client::{BinanceSpotWSClient, BitstampWSClient, WSClient};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::mpsc as std_mpsc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 #[derive(Clone, Debug)]
-struct OrderBookEntry {
-    source: &'static str,
-    price: f64,
-    amount: f64,
+pub struct OrderBookEntry {
+    pub source: &'static str,
+    pub price: f64,
+    pub amount: f64,
 }
 
 impl OrderBookEntry {
@@ -23,9 +23,15 @@ impl OrderBookEntry {
 }
 
 #[derive(Clone, Debug)]
-struct OrderBook {
-    asks: Vec<OrderBookEntry>,
-    bids: Vec<OrderBookEntry>,
+pub struct OrderBook {
+    pub asks: Vec<OrderBookEntry>,
+    pub bids: Vec<OrderBookEntry>,
+}
+
+#[derive(Clone, Debug)]
+pub struct OrderBookSummary {
+    pub spread: f64,
+    pub order_book: OrderBook,
 }
 
 impl OrderBook {
@@ -55,15 +61,13 @@ impl OrderBook {
         self.asks[0].price - self.bids[0].price
     }
 
-    fn print_top_10(&self) {
-        println!("spread: {}", self.spread());
-        println!("top 10 asks:");
-        for ask in self.asks.iter().take(10) {
-            println!("  {}, {}, {}", ask.source, ask.price, ask.amount);
-        }
-        println!("top 10 bids:");
-        for bid in self.bids.iter().take(10) {
-            println!("  {}, {}, {}", bid.source, bid.price, bid.amount);
+    fn make_summary(&self) -> OrderBookSummary {
+        OrderBookSummary {
+            spread: self.spread(),
+            order_book: OrderBook {
+                asks: self.asks.iter().take(10).map(|x| x.clone()).collect(),
+                bids: self.bids.iter().take(10).map(|x| x.clone()).collect(),
+            }
         }
     }
 
@@ -163,7 +167,7 @@ impl SpreadScraper {
     async fn collect_and_sort_order_books(&mut self) {
         let mut combined_order_book = OrderBook::new();
 
-        for (exchange, maybe_order_book) in self.order_book_map.iter() {
+        for (_exchange, maybe_order_book) in self.order_book_map.iter() {
             match maybe_order_book {
                 Some(order_book) => combined_order_book.append(order_book),
                 None => {
@@ -175,7 +179,7 @@ impl SpreadScraper {
 
         combined_order_book.sort();
 
-        combined_order_book.print_top_10();
+        let summary = combined_order_book.make_summary();
     }
 
     async fn run(&mut self) {
