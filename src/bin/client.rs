@@ -2,8 +2,6 @@ pub mod pb {
     tonic::include_proto!("orderbook");
 }
 
-use futures::stream::Stream;
-use std::time::Duration;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 

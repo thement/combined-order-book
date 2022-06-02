@@ -4,10 +4,10 @@ pub mod pb {
 }
 
 use futures::Stream;
-use std::{error::Error, io::ErrorKind, net::ToSocketAddrs, pin::Pin, time::Duration};
-use tokio::sync::{broadcast, mpsc};
-use tokio_stream::{wrappers::ReceiverStream, StreamExt};
-use tonic::{transport::Server, Request, Response, Status, Streaming};
+use std::{net::ToSocketAddrs, pin::Pin};
+use tokio::sync::mpsc;
+use tokio_stream::{wrappers::ReceiverStream};
+use tonic::{transport::Server, Request, Response, Status};
 
 use pb::{Empty, Level, Summary};
 
