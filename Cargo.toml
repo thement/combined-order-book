@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tonic = "0.7"
+tonic = { version = "0.7", features = ["tls", "compression"] }
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
 crypto-ws-client = "4.11.3"
 crypto-msg-parser = "*"
 crypto-market-type = "*"
@@ -16,6 +17,8 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 anyhow = "*"
+prost = "0.10"
+tokio-stream = { version = "0.1", features = ["net"] }
 
 [build-dependencies]
 tonic-build = { version = "0.7.2", features = ["prost", "compression"] }
