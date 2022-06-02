@@ -16,3 +16,6 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 anyhow = "*"
+
+[build-dependencies]
+tonic-build = { version = "0.7.2", features = ["prost", "compression"] }
